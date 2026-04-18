@@ -142,7 +142,6 @@ def get_summary_metrics(df, time_col, event_col):
         "max_time": round(df[time_col].max(), 2),
     }
 
-
 def apply_filters(df, filters):
     """
     Applique les filtres interactifs au DataFrame.
@@ -156,10 +155,14 @@ def apply_filters(df, filters):
     """
     df_f = df.copy()
     for col, val in filters.items():
-        if col not in df.columns:
+        if col not in df_f.columns:
             continue
         if isinstance(val, tuple) and len(val) == 2:
             df_f = df_f[(df_f[col] >= val[0]) & (df_f[col] <= val[1])]
         elif isinstance(val, list) and len(val) > 0:
-            df_f = df_f[df_f[col].isin(val)]
+            # Convertir en string pour éviter les problèmes avec category
+            col_as_str = df_f[col].astype(str)
+            val_as_str = [str(v) for v in val]
+            df_f = df_f[col_as_str.isin(val_as_str)]
     return df_f
+
