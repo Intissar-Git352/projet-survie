@@ -564,7 +564,6 @@ with tabs[4]:
         | **Formule** | S(t) = Π(1 − hᵢ) | H(t) = Σ(dᵢ/nᵢ) |
         | **Avantage** | Standard, intuitive | Plus stable petits effectifs |
         """)
-
 # ─────────────────────────────────────────────────────────────────────────────
 # ONGLET 6 — PRÉDICTION INDIVIDUELLE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -596,24 +595,18 @@ with tabs[5]:
             try:
                 covariates_pred = [c for c in ["Age", "Sex", "Smoker", "Treatment",
                                                 "Physical_Activity"] if c in df.columns]
-                # Encoder manuellement les colonnes catégorielles restantes
-with st.spinner("Calcul en cours…"):
-                try:
-                    covariates_pred = [c for c in ["Age", "Sex", "Smoker", "Treatment",
-                                                    "Physical_Activity"] if c in df.columns]
-                    df_cox_pred = prepare_cox_data(df, time_col, event_col, covariates_pred)
-                    df_hash_pred = str(pd.util.hash_pandas_object(df_cox_pred).sum())
-                    cph_pred = fit_cox_model(df_hash_pred, df_cox_pred, time_col, event_col)
+                df_cox_pred = prepare_cox_data(df, time_col, event_col, covariates_pred)
+                df_hash_pred = str(pd.util.hash_pandas_object(df_cox_pred).sum())
+                cph_pred = fit_cox_model(df_hash_pred, df_cox_pred, time_col, event_col)
 
-                    sf_ind, risk_score = predict_survival_cox(
-                        cph_pred, patient_profile, df_cox_pred)
-
-                sf_ind, risk_score = predict_survival_cox(cph_pred, patient_profile, df_cox_pred)
+                sf_ind, risk_score = predict_survival_cox(
+                    cph_pred, patient_profile, df_cox_pred)
                 sf_base = predict_survival_baseline(cph_pred)
                 km_proba = predict_km_group(df, time_col, event_col, patient_profile)
 
-                st.plotly_chart(plot_individual_survival(sf_ind, sf_base, "Patient"),
-                                use_container_width=True)
+                st.plotly_chart(
+                    plot_individual_survival(sf_ind, sf_base, "Patient"),
+                    use_container_width=True)
 
                 st.markdown("#### 🎯 Niveau de risque")
                 col_g1, col_g2 = st.columns([1, 2])
@@ -624,7 +617,7 @@ with st.spinner("Calcul en cours…"):
                     level = ("🟢 Faible" if risk_score < 1.5
                              else ("🟠 Modéré" if risk_score < 2.5 else "🔴 Élevé"))
                     st.markdown(f"**Niveau : {level}**")
-                    st.caption("Score = exp(β·X) — valeur 1 = patient médian de référence.")
+                    st.caption("Score = exp(β·X) — valeur 1 = patient médian.")
 
                 st.markdown("#### 📋 Probabilités de survie")
                 col_km, col_cox = st.columns(2)
@@ -634,7 +627,8 @@ with st.spinner("Calcul en cours…"):
                 with col_cox:
                     st.markdown("**Via modèle de Cox**")
                     prob_table = get_probability_table(sf_ind)
-                    key_probs = prob_table[prob_table["Temps (mois)"].isin(KEY_TIME_POINTS)]
+                    key_probs = prob_table[
+                        prob_table["Temps (mois)"].isin(KEY_TIME_POINTS)]
                     st.dataframe(key_probs, hide_index=True, use_container_width=True)
 
                 with st.expander("📊 Tableau complet S(t) tous les 6 mois"):
@@ -646,9 +640,11 @@ with st.spinner("Calcul en cours…"):
 
                 st.markdown("#### 🌊 Contributions au score de risque (SHAP-like)")
                 try:
-                    contrib = compute_waterfall_contributions(cph_pred, patient_profile, df_cox_pred)
+                    contrib = compute_waterfall_contributions(
+                        cph_pred, patient_profile, df_cox_pred)
                     if contrib:
-                        st.plotly_chart(plot_waterfall(contrib), use_container_width=True)
+                        st.plotly_chart(plot_waterfall(contrib),
+                                        use_container_width=True)
                 except Exception as ew:
                     st.warning(f"Contributions non disponibles : {ew}")
 
