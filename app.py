@@ -597,14 +597,16 @@ with tabs[5]:
                 covariates_pred = [c for c in ["Age", "Sex", "Smoker", "Treatment",
                                                 "Physical_Activity"] if c in df.columns]
                 # Encoder manuellement les colonnes catégorielles restantes
-for col in df_cox_pred.columns:
-    if col not in [time_col, event_col]:
-        if df_cox_pred[col].dtype == "object" or str(df_cox_pred[col].dtype) == "category":
-            dummies = pd.get_dummies(df_cox_pred[col], prefix=col, drop_first=True)
-            df_cox_pred = pd.concat([df_cox_pred.drop(columns=[col]), dummies], axis=1)
-        df_cox_pred[col] = df_cox_pred[col].astype(float)
-                df_hash_pred = str(pd.util.hash_pandas_object(df_cox_pred).sum())
-                cph_pred = fit_cox_model(df_hash_pred, df_cox_pred, time_col, event_col)
+with st.spinner("Calcul en cours…"):
+                try:
+                    covariates_pred = [c for c in ["Age", "Sex", "Smoker", "Treatment",
+                                                    "Physical_Activity"] if c in df.columns]
+                    df_cox_pred = prepare_cox_data(df, time_col, event_col, covariates_pred)
+                    df_hash_pred = str(pd.util.hash_pandas_object(df_cox_pred).sum())
+                    cph_pred = fit_cox_model(df_hash_pred, df_cox_pred, time_col, event_col)
+
+                    sf_ind, risk_score = predict_survival_cox(
+                        cph_pred, patient_profile, df_cox_pred)
 
                 sf_ind, risk_score = predict_survival_cox(cph_pred, patient_profile, df_cox_pred)
                 sf_base = predict_survival_baseline(cph_pred)
