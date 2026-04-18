@@ -1,7 +1,5 @@
 """
 app.py — Application Streamlit d'Analyse de Survie
-Point d'entrée principal.
-
 Réalisé par : Bouguessa Nour & Sbartai Sami
 """
 
@@ -34,7 +32,6 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Imports modules ────────────────────────────────────────────────────────────
 from modules.data_loader import (
     load_csv, validate_dataframe, add_derived_variables,
     get_summary_metrics, apply_filters,
@@ -77,10 +74,12 @@ from utils.plots import (
     plot_forest, plot_waterfall, plot_gauge,
     PALETTE, GROUP_COLORS,
 )
-from utils.stats_helpers import chi2_test, compute_conditional_survival, get_variable_types
+from utils.stats_helpers import (
+    chi2_test, compute_conditional_survival, get_variable_types,
+    deviance_residuals,
+)
 from modules.bonus_tab import render_bonus_tab
 
-# ── État global ────────────────────────────────────────────────────────────────
 for key, val in [("df_raw", None), ("df_clean", None),
                  ("time_col", "Time_to_Event"), ("event_col", "Event_Observed")]:
     if key not in st.session_state:
@@ -92,7 +91,6 @@ for key, val in [("df_raw", None), ("df_clean", None),
 with st.sidebar:
     st.markdown("## 🩺 Analyse de Survie")
 
-    # Chargement
     st.markdown("### 📁 Chargement des données")
     uploaded_file = st.file_uploader("Choisir un fichier CSV", type=["csv"])
     col_enc, col_sep = st.columns(2)
@@ -121,7 +119,6 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"Erreur : {e}")
 
-    # Variables
     st.markdown("### 🎯 Variables")
     if st.session_state["df_clean"] is not None:
         cols_avail = st.session_state["df_clean"].columns.tolist()
@@ -134,7 +131,6 @@ with st.sidebar:
             index=cols_avail.index("Event_Observed") if "Event_Observed" in cols_avail else 0,
         )
 
-    # Filtres
     st.markdown("### 🔽 Filtres interactifs")
     filters = {}
     if st.session_state["df_clean"] is not None:
@@ -193,7 +189,7 @@ time_col = st.session_state["time_col"]
 event_col = st.session_state["event_col"]
 
 if len(df) < 5:
-    st.error("⛔ Moins de 5 patients après filtrage. Élargissez les filtres.")
+    st.error("⛔ Moins de 5 patients après filtrage.")
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -212,7 +208,7 @@ tabs = st.tabs([
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 1 — VISUALISATION
+# ONGLET 1
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[0]:
     st.subheader("📊 Aperçu du jeu de données")
@@ -238,10 +234,10 @@ with tabs[0]:
     try:
         dup_info = detect_duplicates(df, event_col)
         if dup_info["n_total_duplicates"] > 0:
-            st.warning(f"⚠️ **{dup_info['n_total_duplicates']}** lignes dupliquées détectées "
-                       f"(dont {dup_info['n_censored_duplicates']} sur patients censurés).")
+            st.warning(f"⚠️ **{dup_info['n_total_duplicates']}** lignes dupliquées.")
             if st.button("🗑️ Supprimer les doublons"):
-                st.session_state["df_clean"] = remove_duplicates(st.session_state["df_clean"])
+                st.session_state["df_clean"] = remove_duplicates(
+                    st.session_state["df_clean"])
                 st.success("Doublons supprimés.")
                 st.rerun()
         else:
@@ -256,15 +252,8 @@ with tabs[0]:
     except Exception as e:
         st.error(f"Erreur : {e}")
 
-    with st.expander("ℹ️ Aide et interprétation"):
-        st.markdown("""
-        - **Numérique continue** : Age, BMI, Time_to_Event
-        - **Binaire** : Event_Observed, Smoker
-        - **Catégorielle nominale** : Sex, Treatment, Physical_Activity
-        """)
-
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 2 — DONNÉES MANQUANTES
+# ONGLET 2
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[1]:
     st.subheader("🧹 Diagnostic des valeurs manquantes")
@@ -272,7 +261,7 @@ with tabs[1]:
         miss = missing_summary(df)
         total_miss = miss["N manquants"].sum()
         if total_miss == 0:
-            st.success("✅ Aucune valeur manquante dans le jeu de données.")
+            st.success("✅ Aucune valeur manquante.")
         else:
             st.warning(f"⚠️ **{total_miss}** valeurs manquantes au total.")
             st.dataframe(miss, use_container_width=True, hide_index=True)
@@ -284,9 +273,10 @@ with tabs[1]:
                     text=miss_nz["% manquants"].round(1).astype(str) + "%",
                     textposition="outside",
                 ))
-                fig_miss.update_layout(title="% de valeurs manquantes",
-                                       template="plotly_white",
-                                       height=max(300, 40 * len(miss_nz) + 100))
+                fig_miss.update_layout(
+                    title="% de valeurs manquantes",
+                    template="plotly_white",
+                    height=max(300, 40 * len(miss_nz) + 100))
                 st.plotly_chart(fig_miss, use_container_width=True)
 
             st.divider()
@@ -301,7 +291,8 @@ with tabs[1]:
                     continue
                 strategies[col] = st.selectbox(
                     f"**{col}** ({n_miss} manquants)",
-                    get_imputation_options(str(df[col].dtype)), key=f"imp_{col}")
+                    get_imputation_options(str(df[col].dtype)),
+                    key=f"imp_{col}")
 
             if st.button("✅ Appliquer le traitement", type="primary"):
                 with st.spinner("Application…"):
@@ -318,21 +309,15 @@ with tabs[1]:
     except Exception as e:
         st.error(f"Erreur : {e}")
 
-    with st.expander("📚 Note méthodologique — Données manquantes"):
+    with st.expander("📚 Note méthodologique"):
         st.markdown("""
-        **MCAR** : Absence indépendante des données → toute méthode valide.
-
-        **MAR** : Absence dépend des données observées → imputation multiple recommandée.
-
-        **MNAR** : Absence dépend des valeurs manquantes → situation problématique,
-        peut créer une **censure informative** en analyse de survie.
-
-        Toute valeur manquante sur `Time_to_Event` ou `Event_Observed` implique
-        la suppression obligatoire de la ligne.
+        **MCAR** : Toute méthode valide.
+        **MAR** : Imputation multiple recommandée.
+        **MNAR** : Situation problématique — censure informative possible.
         """)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 3 — STATISTIQUES DESCRIPTIVES
+# ONGLET 3
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[2]:
     st.subheader("📈 Statistiques descriptives")
@@ -343,11 +328,13 @@ with tabs[2]:
         if not num_stats.empty:
             def color_pval(val):
                 try:
-                    return "color: #DC2626; font-weight:600" if float(val) < 0.05 else "color: #6B7280"
+                    return ("color: #DC2626; font-weight:600"
+                            if float(val) < 0.05 else "color: #6B7280")
                 except Exception:
                     return ""
-            st.dataframe(num_stats.style.map(color_pval, subset=["p-valeur"]),
-                         use_container_width=True, hide_index=True)
+            st.dataframe(
+                num_stats.style.map(color_pval, subset=["p-valeur"]),
+                use_container_width=True, hide_index=True)
     except Exception as e:
         st.error(f"Erreur : {e}")
 
@@ -374,14 +361,16 @@ with tabs[2]:
 
     st.divider()
     st.markdown("#### Tableau croisé interactif")
-    cat_cols_avail = [c for c in CAT_VARS + ["Tranche_Age", "Tranche_BMI"] if c in df.columns]
+    cat_cols_avail = [c for c in CAT_VARS + ["Tranche_Age", "Tranche_BMI"]
+                      if c in df.columns]
     if len(cat_cols_avail) >= 2:
         cc1, cc2 = st.columns(2)
         with cc1:
             var_row = st.selectbox("Variable ligne", cat_cols_avail, key="ct_row")
         with cc2:
-            var_col_ct = st.selectbox("Variable colonne",
-                                      [c for c in cat_cols_avail if c != var_row], key="ct_col")
+            var_col_ct = st.selectbox(
+                "Variable colonne",
+                [c for c in cat_cols_avail if c != var_row], key="ct_col")
         try:
             ct_res = chi2_test(df, var_row, var_col_ct)
             st.dataframe(ct_res["crosstab"], use_container_width=True)
@@ -392,7 +381,7 @@ with tabs[2]:
             st.error(f"Erreur : {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 4 — REPRÉSENTATIONS GRAPHIQUES
+# ONGLET 4
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[3]:
     st.subheader("🎨 Représentations graphiques interactives")
@@ -411,7 +400,8 @@ with tabs[3]:
         st.plotly_chart(plot_histogram_kde(df, var_hist, group_by=grp_val),
                         use_container_width=True)
         if grp_val:
-            st.plotly_chart(plot_boxplot(df, var_hist, grp_val), use_container_width=True)
+            st.plotly_chart(plot_boxplot(df, var_hist, grp_val),
+                            use_container_width=True)
     except Exception as e:
         st.error(f"Erreur : {e}")
 
@@ -422,16 +412,19 @@ with tabs[3]:
         with g2c1:
             var_bar = st.selectbox("Variable principale", cat_cols_g, key="var_bar")
             try:
-                st.plotly_chart(plot_bar_categorical(df, var_bar), use_container_width=True)
+                st.plotly_chart(plot_bar_categorical(df, var_bar),
+                                use_container_width=True)
             except Exception as e:
                 st.error(f"{e}")
         with g2c2:
             if len(cat_cols_g) >= 2:
                 var_sx = st.selectbox("Variable X (empilé)", cat_cols_g, key="sx")
-                var_sg = st.selectbox("Variable groupe",
-                                      [c for c in cat_cols_g if c != var_sx], key="sg")
+                var_sg = st.selectbox(
+                    "Variable groupe",
+                    [c for c in cat_cols_g if c != var_sx], key="sg")
                 try:
-                    st.plotly_chart(plot_stacked_bar(df, var_sx, var_sg), use_container_width=True)
+                    st.plotly_chart(plot_stacked_bar(df, var_sx, var_sg),
+                                    use_container_width=True)
                 except Exception as e:
                     st.error(f"{e}")
 
@@ -439,7 +432,8 @@ with tabs[3]:
     st.markdown("#### Matrice de corrélation de Pearson")
     if len(num_cols_avail) >= 2:
         try:
-            st.plotly_chart(plot_correlation_matrix(df, num_cols_avail), use_container_width=True)
+            st.plotly_chart(plot_correlation_matrix(df, num_cols_avail),
+                            use_container_width=True)
         except Exception as e:
             st.error(f"Erreur : {e}")
 
@@ -447,8 +441,8 @@ with tabs[3]:
     st.markdown("#### Scatter matrix (pairplot)")
     color_sc = st.selectbox("Colorier par", ["Aucun"] + cat_cols_g, key="color_sc")
     try:
-        st.plotly_chart(plot_scatter_matrix(
-            df, color_by=None if color_sc == "Aucun" else color_sc),
+        st.plotly_chart(
+            plot_scatter_matrix(df, color_by=None if color_sc == "Aucun" else color_sc),
             use_container_width=True)
     except Exception as e:
         st.error(f"Erreur : {e}")
@@ -458,13 +452,14 @@ with tabs[3]:
     if cat_cols_g:
         var_biv = st.selectbox("Variable explicative", cat_cols_g, key="biv")
         try:
-            st.plotly_chart(plot_bivariate_survival(df, time_col, event_col, var_biv),
-                            use_container_width=True)
+            st.plotly_chart(
+                plot_bivariate_survival(df, time_col, event_col, var_biv),
+                use_container_width=True)
         except Exception as e:
             st.error(f"Erreur : {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 5 — SURVIE & KM
+# ONGLET 5
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[4]:
     st.subheader("📉 Analyse de survie — Kaplan-Meier & Nelson-Aalen")
@@ -476,7 +471,8 @@ with tabs[4]:
             kmf_global = fit_kaplan_meier(df[time_col], df[event_col], "Survie globale")
         st.plotly_chart(plot_km_global(kmf_global), use_container_width=True)
         med = float(kmf_global.median_survival_time_)
-        st.metric("Médiane de survie", f"{med:.2f} mois" if np.isfinite(med) else "Non atteinte")
+        st.metric("Médiane de survie",
+                  f"{med:.2f} mois" if np.isfinite(med) else "Non atteinte")
         with st.expander("📋 Tableau de survie complet"):
             surv_tbl = get_survival_table(kmf_global)
             st.dataframe(surv_tbl, use_container_width=True, hide_index=True)
@@ -494,12 +490,15 @@ with tabs[4]:
     strat_var_km = strat_options[0] if strat_options else None
 
     if strat_options:
-        strat_var_km = st.selectbox("Variable de stratification", strat_options, key="strat_km")
+        strat_var_km = st.selectbox("Variable de stratification",
+                                     strat_options, key="strat_km")
         try:
             with st.spinner("Stratification KM…"):
-                fig_strat, kmf_dict = plot_km_stratified(df, time_col, event_col, strat_var_km)
+                fig_strat, kmf_dict = plot_km_stratified(
+                    df, time_col, event_col, strat_var_km)
             st.plotly_chart(fig_strat, use_container_width=True)
-            st.dataframe(get_medians_table(kmf_dict), use_container_width=True, hide_index=True)
+            st.dataframe(get_medians_table(kmf_dict),
+                         use_container_width=True, hide_index=True)
         except Exception as e:
             st.error(f"Erreur stratification : {e}")
 
@@ -508,14 +507,16 @@ with tabs[4]:
             lr_res = run_logrank_tests(df, time_col, event_col, strat_var_km)
             if lr_res.get("global"):
                 g = lr_res["global"]
-                st.info(interpret_logrank(g["p_value"], list(kmf_dict.keys()), strat_var_km))
+                st.info(interpret_logrank(g["p_value"],
+                                          list(kmf_dict.keys()), strat_var_km))
                 c1, c2, c3 = st.columns(3)
                 c1.metric("χ²", g["chi2"])
                 c2.metric("ddl", g["ddl"])
                 c3.metric("p-valeur", g["p_value"])
             if "pairwise" in lr_res and not lr_res["pairwise"].empty:
                 with st.expander("📊 Comparaisons deux à deux (Bonferroni)"):
-                    st.dataframe(lr_res["pairwise"], use_container_width=True, hide_index=True)
+                    st.dataframe(lr_res["pairwise"],
+                                 use_container_width=True, hide_index=True)
         except Exception as e:
             st.error(f"Erreur log-rank : {e}")
 
@@ -525,7 +526,8 @@ with tabs[4]:
     with sc1:
         t0_cond = st.number_input("t₀ (mois)", 0.0, float(df[time_col].max()), 12.0)
     with sc2:
-        t_target = st.number_input("t cible (mois)", 0.0, float(df[time_col].max()), 36.0)
+        t_target = st.number_input("t cible (mois)", 0.0,
+                                    float(df[time_col].max()), 36.0)
     if t_target > t0_cond and kmf_global is not None:
         try:
             cond = compute_conditional_survival(kmf_global, t0_cond, t_target)
@@ -533,7 +535,7 @@ with tabs[4]:
                       f"{cond:.4f}" if not np.isnan(cond) else "N/A")
         except Exception:
             pass
-    with st.expander("📚 Formule — Survie conditionnelle"):
+    with st.expander("📚 Formule"):
         st.latex(r"P(T > t \mid T > t_0) = \frac{S(t)}{S(t_0)}")
 
     st.divider()
@@ -546,26 +548,20 @@ with tabs[4]:
             st.plotly_chart(plot_na_global(naf_global), use_container_width=True)
         with na_tabs[1]:
             if kmf_global is not None:
-                st.plotly_chart(plot_na_vs_km(naf_global, kmf_global), use_container_width=True)
+                st.plotly_chart(plot_na_vs_km(naf_global, kmf_global),
+                                use_container_width=True)
         with na_tabs[2]:
             if strat_options:
-                strat_na = st.selectbox("Stratification NA", strat_options, key="strat_na")
+                strat_na = st.selectbox("Stratification NA",
+                                         strat_options, key="strat_na")
                 st.plotly_chart(
                     plot_na_stratified(df, time_col, event_col, strat_na),
                     use_container_width=True)
     except Exception as e:
         st.error(f"Erreur Nelson-Aalen : {e}")
 
-    with st.expander("📚 KM vs Nelson-Aalen"):
-        st.markdown("""
-        | | Kaplan-Meier | Nelson-Aalen |
-        |---|---|---|
-        | **Estime** | S(t) directement | H(t) risque cumulé |
-        | **Formule** | S(t) = Π(1 − hᵢ) | H(t) = Σ(dᵢ/nᵢ) |
-        | **Avantage** | Standard, intuitive | Plus stable petits effectifs |
-        """)
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 6 — PRÉDICTION INDIVIDUELLE
+# ONGLET 6
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[5]:
     st.subheader("🔮 Prédiction individuelle de survie")
@@ -578,9 +574,11 @@ with tabs[5]:
         p_smoker = st.radio("Fumeur", ["Non (0)", "Oui (1)"], key="pred_smoker")
     with pf2:
         p_bmi = st.number_input("BMI", 10.0, 60.0, 25.0, step=0.5, key="pred_bmi")
-        p_treatment = st.selectbox("Traitement", ["Standard", "Experimental"], key="pred_trt")
+        p_treatment = st.selectbox("Traitement",
+                                    ["Standard", "Experimental"], key="pred_trt")
     with pf3:
-        p_activity = st.selectbox("Activité physique", ["Low", "Moderate", "High"], key="pred_act")
+        p_activity = st.selectbox("Activité physique",
+                                   ["Low", "Moderate", "High"], key="pred_act")
         p_comorbidities = st.number_input("Comorbidités", 0, 10, 1, key="pred_comorb")
 
     patient_profile = {
@@ -653,7 +651,7 @@ with tabs[5]:
                 st.exception(e)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 7 — MODÈLE DE COX
+# ONGLET 7
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[6]:
     st.subheader("🧬 Modèle de Cox à risques proportionnels")
@@ -673,9 +671,11 @@ with tabs[6]:
         else:
             with st.spinner("Ajustement…"):
                 try:
-                    df_cox_new = prepare_cox_data(df, time_col, event_col, selected_cov)
+                    df_cox_new = prepare_cox_data(
+                        df, time_col, event_col, selected_cov)
                     h = str(pd.util.hash_pandas_object(df_cox_new).sum()) + ties_method
-                    cph_new = fit_cox_model(h, df_cox_new, time_col, event_col, ties=ties_method)
+                    cph_new = fit_cox_model(
+                        h, df_cox_new, time_col, event_col, ties=ties_method)
                     st.session_state["cph_model"] = cph_new
                     st.session_state["df_cox"] = df_cox_new
                     st.success("✅ Modèle ajusté avec succès.")
@@ -705,6 +705,7 @@ with tabs[6]:
         mc3.metric("Log-vraisemblance", cm["log_likelihood"])
 
         cox_summary = get_cox_summary(cph)
+
         def highlight_sig(row):
             try:
                 p = float(str(row.get("p-valeur", "1")).replace("<", ""))
@@ -713,6 +714,7 @@ with tabs[6]:
             except Exception:
                 pass
             return [""] * len(row)
+
         st.dataframe(cox_summary.style.apply(highlight_sig, axis=1),
                      use_container_width=True, hide_index=True)
     except Exception as e:
@@ -726,7 +728,7 @@ with tabs[6]:
         st.error(f"Erreur forest plot : {e}")
 
     st.divider()
-    st.markdown("#### 🔬 Vérification hypothèse des risques proportionnels")
+    st.markdown("#### 🔬 Vérification hypothèse PH")
     try:
         ph = check_proportional_hazards(cph, df_cox)
         if "table" in ph and not ph["table"].empty:
@@ -734,7 +736,7 @@ with tabs[6]:
     except Exception as e:
         st.warning(f"Test PH non disponible : {e}")
 
-    with st.expander("📈 Résidus de Schoenfeld par variable"):
+    with st.expander("📈 Résidus de Schoenfeld"):
         for col_var in cph.params_.index:
             try:
                 fig_sch = plot_schoenfeld_residuals(cph, df_cox, col_var)
@@ -743,24 +745,15 @@ with tabs[6]:
             except Exception:
                 pass
 
-    with st.expander("📚 L'hypothèse des risques proportionnels"):
-        st.markdown("""
-        Le modèle de Cox suppose que le rapport des risques entre deux individus
-        est **constant dans le temps** : h(t|X) = h₀(t) × exp(βᵀX)
-
-        **Test de Schoenfeld** : p < 0.05 → violation potentielle.
-
-        **Solutions** : stratification, interaction avec le temps,
-        modèles à effets variant.
-        """)
-
     st.divider()
     st.markdown("#### 📐 Survie ajustée — Effet partiel")
     try:
         cox_binary = [c for c in df_cox.columns
-                      if c not in [time_col, event_col] and df_cox[c].nunique() <= 5]
+                      if c not in [time_col, event_col]
+                      and df_cox[c].nunique() <= 5]
         if cox_binary:
-            var_partial = st.selectbox("Variable d'intérêt", cox_binary, key="partial")
+            var_partial = st.selectbox("Variable d'intérêt",
+                                        cox_binary, key="partial")
             fig_partial = plot_partial_effects(cph, df_cox, var_partial)
             if fig_partial.data:
                 st.plotly_chart(fig_partial, use_container_width=True)
@@ -785,7 +778,6 @@ with tabs[6]:
 
     with res_tabs[1]:
         try:
-            from utils.stats_helpers import deviance_residuals
             dev = deviance_residuals(cph, df_cox)
             fig_dev = go.Figure(go.Scatter(
                 y=dev.values, mode="markers",
@@ -796,7 +788,7 @@ with tabs[6]:
                                   template="plotly_white")
             st.plotly_chart(fig_dev, use_container_width=True)
             top10 = dev.abs().nlargest(10)
-            st.markdown("**10 patients avec résidus les plus extrêmes :**")
+            st.markdown("**10 patients avec résidus extrêmes :**")
             out = df_cox.iloc[top10.index].copy()
             out["Résidu_Déviance"] = dev.values[top10.index]
             st.dataframe(out.round(4), use_container_width=True)
@@ -804,7 +796,7 @@ with tabs[6]:
             st.warning(f"Résidus Déviance : {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 8 — TESTS DE COMPARAISON
+# ONGLET 8
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[7]:
     st.subheader("🔬 Tests de comparaison des courbes de survie")
@@ -839,34 +831,38 @@ with tabs[7]:
     st.markdown("#### Tests alternatifs pondérés")
     if n_groups == 2:
         try:
-            st.dataframe(run_all_weighted_tests(df, time_col, event_col, var_lr),
-                         use_container_width=True, hide_index=True)
+            st.dataframe(
+                run_all_weighted_tests(df, time_col, event_col, var_lr),
+                use_container_width=True, hide_index=True)
         except Exception as e:
             st.error(f"Erreur tests pondérés : {e}")
     else:
-        st.info(f"ℹ️ Les tests pondérés nécessitent 2 groupes ('{var_lr}' en a {n_groups}).")
+        st.info(f"ℹ️ Tests pondérés pour 2 groupes uniquement "
+                f"('{var_lr}' en a {n_groups}).")
 
     with st.expander("📚 Quand utiliser chaque test ?"):
         st.markdown("""
         | Test | Pondération | Usage |
         |------|-------------|-------|
-        | **Log-rank** | Uniforme | Différences constantes dans le temps |
-        | **Wilcoxon (Breslow)** | nᵢ | Différences en début de suivi |
+        | **Log-rank** | Uniforme | Différences constantes |
+        | **Wilcoxon** | nᵢ | Différences en début |
         | **Tarone-Ware** | √nᵢ | Compromis |
-        | **FH (ρ=1, γ=0)** | S(t) | Différences en début |
-        | **FH (ρ=0, γ=1)** | 1−S(t) | Différences en fin de suivi |
+        | **FH (ρ=1)** | S(t) | Différences en début |
+        | **FH (γ=1)** | 1−S(t) | Différences en fin |
         """)
 
     st.divider()
     st.markdown("#### Comparaison multi-critères")
-    multi_vars = st.multiselect("Variables de stratification", strat_t8,
-                                 default=strat_t8[:2] if len(strat_t8) >= 2 else strat_t8,
-                                 key="multi_strat")
+    multi_vars = st.multiselect(
+        "Variables de stratification", strat_t8,
+        default=strat_t8[:2] if len(strat_t8) >= 2 else strat_t8,
+        key="multi_strat")
     if len(multi_vars) >= 2:
         ncols = 2
         nrows = (len(multi_vars) + 1) // 2
-        fig_multi = make_subplots(rows=nrows, cols=ncols,
-                                   subplot_titles=[f"KM par {v}" for v in multi_vars])
+        fig_multi = make_subplots(
+            rows=nrows, cols=ncols,
+            subplot_titles=[f"KM par {v}" for v in multi_vars])
         for idx, mv in enumerate(multi_vars):
             row_i, col_i = idx // ncols + 1, idx % ncols + 1
             for gi, grp in enumerate(sorted(df[mv].dropna().unique(), key=str)):
@@ -874,26 +870,31 @@ with tabs[7]:
                 if len(sub) < 5:
                     continue
                 try:
-                    kmf_mv = fit_kaplan_meier(sub[time_col], sub[event_col], str(grp))
+                    kmf_mv = fit_kaplan_meier(
+                        sub[time_col], sub[event_col], str(grp))
                     sf = kmf_mv.survival_function_
                     fig_multi.add_trace(
-                        go.Scatter(x=sf.index, y=sf.iloc[:, 0], mode="lines",
-                                   name=f"{mv}={grp}",
-                                   line=dict(color=GROUP_COLORS[gi % len(GROUP_COLORS)], width=2),
-                                   showlegend=(idx == 0)),
+                        go.Scatter(
+                            x=sf.index, y=sf.iloc[:, 0], mode="lines",
+                            name=f"{mv}={grp}",
+                            line=dict(
+                                color=GROUP_COLORS[gi % len(GROUP_COLORS)],
+                                width=2),
+                            showlegend=(idx == 0)),
                         row=row_i, col=col_i)
                 except Exception:
                     pass
-        fig_multi.update_layout(height=380 * nrows, template="plotly_white",
-                                 title="Comparaison multi-critères — Kaplan-Meier")
+        fig_multi.update_layout(
+            height=380 * nrows, template="plotly_white",
+            title="Comparaison multi-critères — Kaplan-Meier")
         st.plotly_chart(fig_multi, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ONGLET 9 — ANALYSES AVANCÉES (BONUS)
+# ONGLET 9
 # ─────────────────────────────────────────────────────────────────────────────
 with tabs[8]:
     cph_for_bonus = st.session_state.get("cph_model", None)
     render_bonus_tab(df, time_col, event_col, cph=cph_for_bonus)
 
-    st.markdown("---")
-    st.caption("🩺 Application d'Analyse de Survie | Bouguessa Nour & Sbartai Sami | 2026")
+st.markdown("---")
+st.caption("🩺 Application d'Analyse de Survie | Bouguessa Nour & Sbartai Sami | 2026")
