@@ -44,23 +44,14 @@ def load_csv(file_bytes, encoding, separator):
     """
     try:
         df = pd.read_csv(BytesIO(file_bytes), encoding=encoding, sep=separator)
-
-        # Supprimer les colonnes parasites qui ne font pas partie du schéma
-        cols_to_drop = [c for c in df.columns
-                        if c not in ["Age", "Sex", "BMI", "Smoker", "Comorbidities",
-                                     "Treatment", "Physical_Activity",
-                                     "Time_to_Event", "Event_Observed", "PatientID",
-                                     "Tranche_Age", "Tranche_BMI"]]
-        if cols_to_drop:
-            df = df.drop(columns=cols_to_drop)
-
         return df
     except Exception as e:
         raise ValueError(f"Impossible de lire le CSV : {e}")
 
+
 def validate_dataframe(df, time_col, event_col):
     """
-    Valide que le DataFrame contient les colonnes et valeurs requises.
+    Valide que le DataFrame contient les colonnes requises.
 
     Args:
         df (pd.DataFrame): Données.
@@ -82,7 +73,7 @@ def validate_dataframe(df, time_col, event_col):
     elif not df[event_col].isin([0, 1]).all():
         warnings.append(f"'{event_col}' doit contenir uniquement 0 et 1.")
     if len(df) < 10:
-        warnings.append("Moins de 10 observations — analyses peu fiables.")
+        warnings.append("Moins de 10 observations.")
     return warnings
 
 
@@ -126,6 +117,17 @@ def get_summary_metrics(df, time_col, event_col):
     Returns:
         dict: Métriques.
     """
+    if time_col not in df.columns or event_col not in df.columns:
+        return {
+            "n_total": len(df),
+            "n_events": 0,
+            "n_censored": 0,
+            "pct_events": 0,
+            "pct_censored": 0,
+            "median_time": 0,
+            "min_time": 0,
+            "max_time": 0,
+        }
     n = len(df)
     n_events = int(df[event_col].sum())
     n_censored = n - n_events
