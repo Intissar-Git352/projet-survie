@@ -30,15 +30,41 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     Returns:
         pd.DataFrame: Données encodées.
     """
-    cols = [time_col, event_col] + [c for c in covariates if c in df.columns]
-    df_cox = df[cols].dropna().copy()
-    cat_to_encode = [c for c in covariates
-                     if c in CATEGORICAL_COLS and c in df_cox.columns
-                     and df_cox[c].dtype == "object"]
-    if cat_to_encode:
-        df_cox = pd.get_dummies(df_cox, columns=cat_to_encode, drop_first=True)
+    # Garder uniquement les covariables qui existent
+    cols_to_use = [c for c in covariates
+                   if c in df.columns and c != time_col and c != event_col]
+
+    # Construire le DataFrame avec time, event, puis covariables
+    df_cox = df[[time_col, event_col] + cols_to_use].dropna().copy()
+    df_cox = df_cox.reset_index(drop=True)
+
+    # Encoder les colonnes catégorielles
+    cat_cols = [c for c in cols_to_use
+                if (df_cox[c].dtype == "object"
+                    or str(df_cox[c].dtype) == "category"
+                    or df_cox[c].dtype.name == "string")]
+
+    if cat_cols:
+        df_cox = pd.get_dummies(df_cox, columns=cat_cols, drop_first=True)
+
+    # Convertir booléens en int
     for col in df_cox.select_dtypes(include="bool").columns:
         df_cox[col] = df_cox[col].astype(int)
+
+    # Convertir covariables en float
+    for col in df_cox.columns:
+        if col not in [time_col, event_col]:
+            try:
+                df_cox[col] = pd.to_numeric(df_cox[col], errors="coerce")
+            except Exception:
+                df_cox = df_cox.drop(columns=[col])
+
+    # Supprimer colonnes dupliquées
+    df_cox = df_cox.loc[:, ~df_cox.columns.duplicated()]
+
+    # Supprimer NaN restants
+    df_cox = df_cox.dropna().reset_index(drop=True)
+
     return df_cox
 
 
@@ -52,16 +78,10 @@ def fit_cox_model(df_hash, df_cox, time_col, event_col, ties="breslow"):
         df_cox (pd.DataFrame): Données préparées.
         time_col (str): Colonne de temps.
         event_col (str): Colonne d'événement.
-        ties (str): Méthode ex-aequo ('breslow', 'efron').
+        ties (str): Méthode ex-aequo.
 
     Returns:
         CoxPHFitter
-
-    Raises:
-        ValueError: Si effectif insuffisant.
-
-    Example:
-        >>> cph = fit_cox_model(hash_str, df_cox, 'Time_to_Event', 'Event_Observed')
     """
     if len(df_cox) < 10:
         raise ValueError("Effectif insuffisant pour le modèle de Cox.")
@@ -123,14 +143,14 @@ def get_forest_data(cph):
 
 def check_proportional_hazards(cph, df_cox):
     """
-    Vérification de l'hypothèse des risques proportionnels.
+    Vérification de l'hypothèse PH.
 
     Args:
         cph: CoxPHFitter ajusté.
-        df_cox (pd.DataFrame): Données d'entraînement.
+        df_cox (pd.DataFrame): Données.
 
     Returns:
-        dict: table avec p-values.
+        dict
     """
     try:
         cph.check_assumptions(df_cox, p_value_threshold=0.05, show_plots=False)
@@ -145,12 +165,12 @@ def check_proportional_hazards(cph, df_cox):
 
 def plot_schoenfeld_residuals(cph, df_cox, variable):
     """
-    Résidus de Schoenfeld vs temps pour une variable.
+    Résidus de Schoenfeld vs temps.
 
     Args:
         cph: CoxPHFitter ajusté.
         df_cox (pd.DataFrame): Données.
-        variable (str): Variable à tracer.
+        variable (str): Variable.
 
     Returns:
         go.Figure
@@ -174,7 +194,7 @@ def plot_schoenfeld_residuals(cph, df_cox, variable):
 
 def plot_martingale(cph, df_cox, variable):
     """
-    Résidus de Martingale vs une variable numérique.
+    Résidus de Martingale vs variable numérique.
 
     Args:
         cph: CoxPHFitter ajusté.
@@ -229,17 +249,20 @@ def plot_partial_effects(cph, df_cox, variable):
                 fig.add_trace(go.Scatter(
                     x=x_data, y=y_data, mode="lines",
                     name=str(line.get_label()),
-                    line=dict(width=2.5, color=GROUP_COLORS[i % len(GROUP_COLORS)]),
+                    line=dict(width=2.5,
+                              color=GROUP_COLORS[i % len(GROUP_COLORS)]),
                 ))
         plt.close("all")
-        fig = apply_defaults(fig, title=f"Survie ajustée — Effet de {variable}",
-                             xaxis_title="Temps (mois)", yaxis_title="S(t)")
+        fig = apply_defaults(fig,
+                             title=f"Survie ajustée — Effet de {variable}",
+                             xaxis_title="Temps (mois)",
+                             yaxis_title="S(t)")
         fig.update_layout(yaxis=dict(range=[0, 1.05]))
         return fig
     except Exception as e:
         fig = go.Figure()
-        fig.add_annotation(text=f"Erreur : {e}", xref="paper", yref="paper",
-                           x=0.5, y=0.5, showarrow=False)
+        fig.add_annotation(text=f"Erreur : {e}", xref="paper",
+                           yref="paper", x=0.5, y=0.5, showarrow=False)
         return fig
 
 
@@ -251,7 +274,7 @@ def get_cox_metrics(cph):
         cph: CoxPHFitter ajusté.
 
     Returns:
-        dict: concordance, AIC, log_likelihood.
+        dict
     """
     return {
         "concordance": round(cph.concordance_index_, 4),
