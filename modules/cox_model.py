@@ -90,8 +90,8 @@ def fit_cox_model(df_hash, df_cox, time_col, event_col, ties="breslow"):
     Returns:
         CoxPHFitter
     """
-    if len(df_cox) < 10:
-        raise ValueError("Effectif insuffisant pour le modèle de Cox.")
+    if len(df_cox) < 5:
+        raise ValueError(f"Effectif insuffisant : {len(df_cox)} lignes après nettoyage.")
     cph = CoxPHFitter(baseline_estimation_method=ties)
     cph.fit(df_cox, duration_col=time_col, event_col=event_col)
     return cph
