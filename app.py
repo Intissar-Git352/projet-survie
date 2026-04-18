@@ -593,10 +593,15 @@ with tabs[5]:
             try:
                 covariates_pred = [c for c in ["Age", "Sex", "Smoker", "Treatment",
                                                 "Physical_Activity"] if c in df.columns]
-                if len(df_cox_pred) == 0:
-                    st.error("Aucune donnée disponible après préparation. Vérifiez vos filtres.")
+                df_cox_pred = prepare_cox_data(df, time_col, event_col, covariates_pred)
+
+                st.write(f"Lignes disponibles : {len(df_cox_pred)}")
+                st.write(f"Colonnes : {list(df_cox_pred.columns)}")
+
+                if len(df_cox_pred) < 5:
+                    st.error(f"Effectif insuffisant : {len(df_cox_pred)} lignes.")
                     st.stop()
-                st.write(f"Debug: {len(df_cox_pred)} lignes, colonnes: {list(df_cox_pred.columns)}")
+
                 df_hash_pred = str(pd.util.hash_pandas_object(df_cox_pred).sum())
                 cph_pred = fit_cox_model(df_hash_pred, df_cox_pred, time_col, event_col)
 
