@@ -43,10 +43,20 @@ def load_csv(file_bytes, encoding, separator):
         ValueError: Si le fichier ne peut pas être parsé.
     """
     try:
-        return pd.read_csv(BytesIO(file_bytes), encoding=encoding, sep=separator)
+        df = pd.read_csv(BytesIO(file_bytes), encoding=encoding, sep=separator)
+
+        # Supprimer les colonnes parasites qui ne font pas partie du schéma
+        cols_to_drop = [c for c in df.columns
+                        if c not in ["Age", "Sex", "BMI", "Smoker", "Comorbidities",
+                                     "Treatment", "Physical_Activity",
+                                     "Time_to_Event", "Event_Observed", "PatientID",
+                                     "Tranche_Age", "Tranche_BMI"]]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop)
+
+        return df
     except Exception as e:
         raise ValueError(f"Impossible de lire le CSV : {e}")
-
 
 def validate_dataframe(df, time_col, event_col):
     """
