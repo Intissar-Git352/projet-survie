@@ -15,7 +15,6 @@ from utils.plots import plot_forest, apply_defaults, PALETTE, GROUP_COLORS
 from utils.stats_helpers import martingale_residuals, deviance_residuals
 
 CATEGORICAL_COLS = ["Sex", "Treatment", "Physical_Activity"]
-
 def prepare_cox_data(df, time_col, event_col, covariates):
     """
     Prépare le DataFrame pour le modèle de Cox.
@@ -35,15 +34,11 @@ def prepare_cox_data(df, time_col, event_col, covariates):
                    and c != time_col
                    and c != event_col]
 
-    # Si aucune covariable disponible, retourner DataFrame vide
     if not cols_to_use:
         return pd.DataFrame()
 
-    # Construire le DataFrame sans dropna sur les covariables
+    # Construire le DataFrame
     df_cox = df[[time_col, event_col] + cols_to_use].copy()
-
-    # Supprimer seulement les lignes avec time ou event manquants
-    df_cox = df_cox.dropna(subset=[time_col, event_col])
     df_cox = df_cox.reset_index(drop=True)
 
     # Encoder les colonnes catégorielles
@@ -63,16 +58,17 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     # Convertir toutes les covariables en float
     for col in df_cox.columns:
         if col not in [time_col, event_col]:
-            try:
-                df_cox[col] = pd.to_numeric(df_cox[col], errors="coerce")
-            except Exception:
-                df_cox = df_cox.drop(columns=[col])
+            df_cox[col] = pd.to_numeric(df_cox[col], errors="coerce")
 
     # Supprimer colonnes dupliquées
     df_cox = df_cox.loc[:, ~df_cox.columns.duplicated()]
 
-    # Ne supprimer les NaN que sur time et event
-    df_cox = df_cox.dropna(subset=[time_col, event_col])
+    # Supprimer TOUS les NaN
+    df_cox = df_cox.dropna()
+    df_cox = df_cox.reset_index(drop=True)
+
+    # Remplacer les infinis par NaN puis supprimer
+    df_cox = df_cox.replace([np.inf, -np.inf], np.nan).dropna()
     df_cox = df_cox.reset_index(drop=True)
 
     return df_cox
