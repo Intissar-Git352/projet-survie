@@ -16,7 +16,6 @@ from utils.stats_helpers import martingale_residuals, deviance_residuals
 
 CATEGORICAL_COLS = ["Sex", "Treatment", "Physical_Activity"]
 
-
 def prepare_cox_data(df, time_col, event_col, covariates):
     """
     Prépare le DataFrame pour le modèle de Cox.
@@ -30,19 +29,29 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     Returns:
         pd.DataFrame: Données encodées.
     """
-    # Garder uniquement les covariables qui existent
+    # Garder seulement les covariables existantes
     cols_to_use = [c for c in covariates
-                   if c in df.columns and c != time_col and c != event_col]
+                   if c in df.columns
+                   and c != time_col
+                   and c != event_col]
 
-    # Construire le DataFrame avec time, event, puis covariables
-    df_cox = df[[time_col, event_col] + cols_to_use].dropna().copy()
+    # Si aucune covariable disponible, retourner DataFrame vide
+    if not cols_to_use:
+        return pd.DataFrame()
+
+    # Construire le DataFrame sans dropna sur les covariables
+    df_cox = df[[time_col, event_col] + cols_to_use].copy()
+
+    # Supprimer seulement les lignes avec time ou event manquants
+    df_cox = df_cox.dropna(subset=[time_col, event_col])
     df_cox = df_cox.reset_index(drop=True)
 
     # Encoder les colonnes catégorielles
     cat_cols = [c for c in cols_to_use
-                if (df_cox[c].dtype == "object"
-                    or str(df_cox[c].dtype) == "category"
-                    or df_cox[c].dtype.name == "string")]
+                if c in df_cox.columns
+                and (df_cox[c].dtype == "object"
+                     or str(df_cox[c].dtype) == "category"
+                     or df_cox[c].dtype.name == "string")]
 
     if cat_cols:
         df_cox = pd.get_dummies(df_cox, columns=cat_cols, drop_first=True)
@@ -51,7 +60,7 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     for col in df_cox.select_dtypes(include="bool").columns:
         df_cox[col] = df_cox[col].astype(int)
 
-    # Convertir covariables en float
+    # Convertir toutes les covariables en float
     for col in df_cox.columns:
         if col not in [time_col, event_col]:
             try:
@@ -62,10 +71,12 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     # Supprimer colonnes dupliquées
     df_cox = df_cox.loc[:, ~df_cox.columns.duplicated()]
 
-    # Supprimer NaN restants
-    df_cox = df_cox.dropna().reset_index(drop=True)
+    # Ne supprimer les NaN que sur time et event
+    df_cox = df_cox.dropna(subset=[time_col, event_col])
+    df_cox = df_cox.reset_index(drop=True)
 
     return df_cox
+
 
 
 @st.cache_resource(show_spinner=False)
