@@ -28,7 +28,6 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     Returns:
         pd.DataFrame: Données encodées.
     """
-    # Garder seulement les covariables existantes
     cols_to_use = [c for c in covariates
                    if c in df.columns
                    and c != time_col
@@ -37,16 +36,18 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     if not cols_to_use:
         return pd.DataFrame()
 
-    # Construire le DataFrame
     df_cox = df[[time_col, event_col] + cols_to_use].copy()
     df_cox = df_cox.reset_index(drop=True)
+
+    # Convertir les colonnes category en string avant get_dummies
+    for col in df_cox.columns:
+        if hasattr(df_cox[col], 'cat') or str(df_cox[col].dtype) == 'category':
+            df_cox[col] = df_cox[col].astype(str)
 
     # Encoder les colonnes catégorielles
     cat_cols = [c for c in cols_to_use
                 if c in df_cox.columns
-                and (df_cox[c].dtype == "object"
-                     or str(df_cox[c].dtype) == "category"
-                     or df_cox[c].dtype.name == "string")]
+                and df_cox[c].dtype == "object"]
 
     if cat_cols:
         df_cox = pd.get_dummies(df_cox, columns=cat_cols, drop_first=True)
@@ -63,12 +64,9 @@ def prepare_cox_data(df, time_col, event_col, covariates):
     # Supprimer colonnes dupliquées
     df_cox = df_cox.loc[:, ~df_cox.columns.duplicated()]
 
-    # Supprimer TOUS les NaN
+    # Supprimer tous les NaN
+    df_cox = df_cox.replace([np.inf, -np.inf], np.nan)
     df_cox = df_cox.dropna()
-    df_cox = df_cox.reset_index(drop=True)
-
-    # Remplacer les infinis par NaN puis supprimer
-    df_cox = df_cox.replace([np.inf, -np.inf], np.nan).dropna()
     df_cox = df_cox.reset_index(drop=True)
 
     return df_cox
